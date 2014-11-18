@@ -23,6 +23,11 @@ module("alttab")
 local surface = cairo.ImageSurface(cairo.Format.RGB24,20,20)
 local cr = cairo.Context(surface)
 
+function dbg(vars)
+    local text = ""
+    for i=1, #vars do text = text .. vars[i] .. " | " end
+    naughty.notify({ text = text, timeout = 0 })
+end
 -- settings
 
 local settings = { 
@@ -39,7 +44,7 @@ local settings = {
 
 -- Create a wibox to contain all the client-widgets
 local preview_wbox = wibox({ width = screen[mouse.screen].geometry.width })
-preview_wbox.border_width = 3
+preview_wbox.border_width = 0
 preview_wbox.ontop = true
 preview_wbox.visible = false
 
@@ -65,14 +70,25 @@ local function preview()
    
    -- Make the wibox the right size, based on the number of clients
    local n = math.max(7, #altTabTable)
-   local W = screen[mouse.screen].geometry.width + 2 * preview_wbox.border_width
-   local w = W / n -- widget width
+   local N = math.min(7, #altTabTable)
+   local screenWidth = screen[mouse.screen].geometry.width
+   local w = screenWidth / n -- widget width
    local h = w * 0.75  -- widget height
    local textboxHeight = 30
+   local W = #altTabTable * w
 
-   local x = -preview_wbox.border_width
+   -- choose which screen to display preview_wbox
+   local x = 0
+   if mouse.screen == 2 then
+     x = screen[1].geometry.width
+   end
+   -- center the preview box
+   if #altTabTable < 7 then
+     x = x + (7 - #altTabTable) / 2 * w
+   end
+
    local y = (screen[mouse.screen].geometry.height - h - textboxHeight) / 2
-   preview_wbox:geometry({x = x, y = y, width = W, height = h + textboxHeight})
+   preview_wbox:geometry({x = x, y = y, width = (w * N) + 1, height = h + textboxHeight})
 
    -- create a list that holds the clients to preview, from left to right
    local leftRightTab = {}
@@ -100,14 +116,14 @@ local function preview()
    local bigFont = textboxHeight / 2
    cr:set_font_size(fontSize)
    for i = 1, #leftRightTab do
-      text = " - " .. leftRightTab[i].class 
-      textWidth = cr:text_extents(text).width
-      textHeight = cr:text_extents(text).height
-      if textWidth > maxTextWidth or textHeight > maxTextHeight then
-   	 maxTextHeight = textHeight
-   	 maxTextWidth = textWidth
-   	 maxText = text
-      end
+     text = " - " .. leftRightTab[i].class
+     textWidth = cr:text_extents(text).width
+     textHeight = cr:text_extents(text).height
+     if textWidth > maxTextWidth or textHeight > maxTextHeight then
+       maxTextHeight = textHeight
+       maxTextWidth = textWidth
+       maxText = text
+     end
    end
 
    while true do
@@ -116,7 +132,7 @@ local function preview()
       textHeight = cr:text_extents(maxText).height
 
       if textWidth < w - textboxHeight and textHeight < textboxHeight then
-   	 break
+   	    break
       end
 
       bigFont = bigFont - 1
@@ -126,104 +142,127 @@ local function preview()
 
    -- create all the widgets
    for i = 1, #leftRightTab do
-      preview_widgets[i] = wibox.widget.base.make_widget()
-      preview_widgets[i].fit = function(preview_widget, width, height)
-   	 return w, h
-      end
+     preview_widgets[i] = wibox.widget.base.make_widget()
+     preview_widgets[i].fit = function(preview_widget, width, height)
+       return w, h
+     end
       
-      preview_widgets[i].draw = function(preview_widget, preview_wbox, cr, width, height)
-   	 if width ~= 0 and height ~= 0 then
+     preview_widgets[i].draw = function(preview_widget, preview_wbox, cr, width, height)
+       if width ~= 0 and height ~= 0 then
 
-   	    local c = leftRightTab[i]
-	    local a = 0.8
-	    local overlay = 0.6
-	    local fontSize = smallFont
-	    if c == altTabTable[altTabIndex] then
-	       a = 0.9
-	       overlay = 0
-	       fontSize = bigFont
-	    end
+         local c = leftRightTab[i]
+         local a = 0.6
+         local overlay = 0.6
+         local fontSize = smallFont
+         if c == altTabTable[altTabIndex] then
+           -- set display values for selected app
+           a = 0.9 
+           overlay = 0
+           fontSize = bigFont
+         end
+ 
+         local sx, sy, tx, ty
 
-   	    local sx, sy, tx, ty
+         -- Border for selection
+         if c == altTabTable[altTabIndex] then
+           --dbg({c})
+           --cr:translate(tx, ty)
+           --cr:scale(1/sx, 1/sy)
+           cr:set_source_rgba(0.76, 0.63, 0, 0.2)
+           cr:rectangle(0, 0, 0, 0)
+           cr:paint()
+         end
+ 
+         -- Icons
+         local icon
+         if c.icon == nil then 
+           icon = gears.surface(gears.surface.load(noicon))
+         else
+           icon = gears.surface(c.icon)
+         end
+            
+         local iconboxWidth = 0.9 * textboxHeight
+         local iconboxHeight = iconboxWidth
+ 
+         -- Titles
+         cr:select_font_face("sans", "italic", "normal")
+         cr:set_font_face(cr:get_font_face())
+         cr:set_font_size(fontSize)
+         
+         if c.name then
+           text = " " .. c.name
+         else
+           text = " " .. c.class
+         end
+         if string.len(text) > 10 then
+           text = string.sub(text, 0, 10) .. "..."
+         end
+         textWidth = cr:text_extents(text).width
+         textHeight = cr:text_extents(text).height
+ 
+         local titleboxWidth = textWidth + iconboxWidth 
+         local titleboxHeight = textboxHeight
+ 
+         -- Draw icons
+         tx = (w - titleboxWidth) / 2
+         ty = h 
+         sx = iconboxWidth / icon.width
+         sy = iconboxHeight  / icon.height
 
-	    -- Icons
-	    local icon
-	    if c.icon == nil then 
-	       icon = gears.surface(gears.surface.load(noicon))
-	    else
-	       icon = gears.surface(c.icon)
-	    end
-	       
-	    local iconboxWidth = 0.9 * textboxHeight
-	    local iconboxHeight = iconboxWidth
 
-	    -- Titles
-	    cr:select_font_face("sans", "italic", "normal")
-	    cr:set_font_face(cr:get_font_face())
-	    cr:set_font_size(fontSize)
-	    
+         cr:translate(tx, ty)
+         cr:scale(sx, sy)
+         cr:set_source_surface(icon, 0, 0)
+         cr:paint()
+         cr:scale(1/sx, 1/sy)
+         cr:translate(-tx, -ty)
+         
+         -- Draw titles
+         tx = tx + iconboxWidth
+         ty = h + (textboxHeight + textHeight) / 2
+ 
+         --cr:set_source_rgba(0,0,0,1)
+         if c == altTabTable[altTabIndex] then
+           cr:set_source_rgba(0.76, 0.63, 0, 1)
+         else
+           cr:set_source_rgba(0.85, 0.87, 0.83, 1)
+         end
+         cr:move_to(tx, ty)
+         cr:show_text(text)
+         cr:stroke()
+ 
+         -- Draw previews
+         local cg = c:geometry()
+         if cg.width > cg.height then
+           sx = a * w / cg.width 
+           sy = math.min(sx, a * h / cg.height)
+         else
+           sy = a * h / cg.height	       
+           sx = math.min(sy, a * h / cg.width)
+         end
+ 
+         tx = (w - sx * cg.width) / 2
+         ty = (h - sy * cg.height) / 2
+ 
+         cr:translate(tx, ty)
+         cr:scale(sx, sy)
+         cr:set_source_surface(gears.surface(c.content), 0, 0)
+         cr:paint()
+ 
+         -- Overlays
+         cr:scale(1/sx, 1/sy)
+         cr:translate(-tx, -ty)
+         cr:set_source_rgba(0,0,0,overlay)
+         cr:rectangle(tx, ty, sx * cg.width, sy * cg.height)
+         cr:fill()
 
-	    text = " - " .. c.class
-	    textWidth = cr:text_extents(text).width
-	    textHeight = cr:text_extents(text).height
+       end
+     end
 
-	    local titleboxWidth = textWidth + iconboxWidth 
-	    local titleboxHeight = textboxHeight
-
-	    -- Draw icons
-	    tx = (w - titleboxWidth) / 2
-	    ty = h 
-	    sx = iconboxWidth / icon.width
-	    sy = iconboxHeight  / icon.height
-
-
-	    cr:translate(tx, ty)
-	    cr:scale(sx, sy)
-	    cr:set_source_surface(icon, 0, 0)
-	    cr:paint()
-	    cr:scale(1/sx, 1/sy)
-	    cr:translate(-tx, -ty)
-	    
-	    -- Draw titles
-	    tx = tx + iconboxWidth
-	    ty = h + (textboxHeight + textHeight) / 2
-
-	    cr:set_source_rgba(0,0,0,1)
-	    cr:move_to(tx, ty)
-	    cr:show_text(text)
-	    cr:stroke()
-
-	    -- Draw previews
-   	    local cg = c:geometry()
-	    if cg.width > cg.height then
-	       sx = a * w / cg.width 
-	       sy = math.min(sx, a * h / cg.height)
-	    else
-	       sy = a * h / cg.height	       
-	       sx = math.min(sy, a * h / cg.width)
-	    end
-
-	    tx = (w - sx * cg.width) / 2
-	    ty = (h - sy * cg.height) / 2
-
-	    cr:translate(tx, ty)
-	    cr:scale(sx, sy)
-	    cr:set_source_surface(gears.surface(c.content), 0, 0)
-	    cr:paint()
-
-	    -- Overlays
-	    cr:scale(1/sx, 1/sy)
-	    cr:translate(-tx, -ty)
-	    cr:set_source_rgba(0,0,0,overlay)
-	    cr:rectangle(tx, ty, sx * cg.width, sy * cg.height)
-	    cr:fill()
-   	 end
-      end
-
-      preview_live_timer.timeout = 1 / settings.preview_box_fps
-      preview_live_timer:connect_signal("timeout", function() 
-					   preview_widgets[i]:emit_signal("widget::updated") 
-      end)
+     preview_live_timer.timeout = 1 / settings.preview_box_fps
+     preview_live_timer:connect_signal("timeout", function() 
+       preview_widgets[i]:emit_signal("widget::updated") 
+     end)
 
    end
 
