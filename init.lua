@@ -44,7 +44,7 @@ local settings = {
 
 -- Create a wibox to contain all the client-widgets
 local preview_wbox = wibox({ width = screen[mouse.screen].geometry.width })
-preview_wbox.border_width = 0
+preview_wbox.border_width = 2
 preview_wbox.ontop = true
 preview_wbox.visible = false
 
